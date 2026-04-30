@@ -1,0 +1,48 @@
+[app]
+host = "127.0.0.1"
+port = 8765
+paper_trading = true
+allow_live_trading = false
+
+[market]
+quote_asset = "USDT"
+candidate_refresh_seconds = 30
+strategy_interval_seconds = 5
+max_candidates = 20
+max_open_positions = 3
+min_quote_volume = 50000000
+max_spread_bps = 12
+exclude_symbols = ["USDCUSDT", "FDUSDUSDT", "TUSDUSDT", "USDPUSDT", "DAIUSDT"]
+
+[futures]
+enabled = true
+hedge_mode = true
+default_leverage = 5
+max_configurable_leverage = 125
+
+[spot]
+enabled = true
+
+[risk]
+risk_mode = "balanced"
+max_notional_per_position = 100
+max_total_notional = 300
+max_daily_loss = 50
+max_consecutive_losses = 3
+kill_switch = false
+
+[strategy]
+name = "short_momentum"
+min_confidence = 0.68
+momentum_weight = 0.35
+volume_weight = 0.25
+book_imbalance_weight = 0.20
+funding_weight = 0.10
+volatility_weight = 0.10
+
+[leverage]
+BTCUSDT = 10
+ETHUSDT = 10
+
+# Supported risk_mode values:
+# capital_protection, balanced, aggressive
