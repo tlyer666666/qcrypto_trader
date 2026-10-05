@@ -24,17 +24,12 @@ Before enabling a Binance backend locally:
 5. Enable live trading only after validating balances, symbols, order sizing,
    precision handling, and cancellation behavior.
 
-Suggested environment variable names:
+Environment variables:
 
 ```text
 BINANCE_API_KEY=
 BINANCE_API_SECRET=
-BINANCE_TESTNET=true
-QCRYPTO_TRADER_DRY_RUN=true
 ```
-
-If the implementation uses different names, keep this document in sync with the
-actual configuration module and sample environment file.
 
 ## Development workflow
 
@@ -55,9 +50,6 @@ python -m pip install build
 python -m build
 python -m pip install dist/*.whl
 ```
-
-Adjust extras and commands to match the project metadata if optional dependency
-groups differ.
 
 ## Backend design notes
 
@@ -91,13 +83,3 @@ A safe Binance backend should keep these concerns separate:
   balance deltas, or stale market data.
 - This repository is software tooling, not financial advice. Users are
   responsible for compliance, taxes, and trading risk.
-
-## Documentation maintenance
-
-When the Binance backend changes, update:
-
-- README quick-start/backend summary.
-- Sample environment variables.
-- Packaging/install commands.
-- Any operational runbook or deployment notes.
-- Tests or smoke-test instructions that prove dry-run behavior still works.
