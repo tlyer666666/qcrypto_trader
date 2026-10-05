@@ -2,7 +2,7 @@
 
 ## Goal
 
-Build a local Windows trading backend for Binance crypto markets. The first version focuses on safe iteration: public market data, paper execution, candidate ranking, risk checks, and a local dashboard.
+Build a local Windows trading backend for Binance crypto markets. The first version covers public market data, paper execution, candidate ranking, risk checks, and a local dashboard.
 
 ## Runtime Shape
 
@@ -10,7 +10,7 @@ Build a local Windows trading backend for Binance crypto markets. The first vers
 - `TradingEngine` owns candidate refresh, strategy evaluation, risk checks, and execution.
 - `BinanceRestMarketData` fetches public spot and futures market data.
 - `RiskEngine` is the only path from strategy signal to order approval.
-- `PaperExecutionEngine` fills approved orders locally; live execution is intentionally locked in v1.
+- `PaperExecutionEngine` fills approved orders locally; live execution is disabled in this version.
 
 ## Trading Rules
 

@@ -2,11 +2,11 @@
 
 Local Binance crypto quant trading backend for Windows.
 
-This first version is intentionally conservative:
+Defaults:
 
-- Paper trading is the default.
-- Live trading is locked behind explicit config.
-- API keys are not stored in `config.toml`.
+- Paper trading is on by default.
+- Live trading is off by default and needs explicit opt-in.
+- API keys are read from environment variables, not from `config.toml`.
 - Spot and USD-M futures share one internal order model.
 - Futures orders support hedge mode through `positionSide=LONG|SHORT`.
 
@@ -49,17 +49,17 @@ scripts\run_local.bat
 scripts\build_exe.bat
 ```
 
-`build_exe.bat` installs the build dependency before packaging. Review it before running.
+`build_exe.bat` installs the build dependency before packaging.
 
 ## Current Scope
 
-This is a redesigned crypto-first system, not a direct Qbot fork. It includes Binance public market data, 30-second candidate refresh, hedge-mode futures order parameters, configurable leverage checks, risk modes, paper execution, and a local panel.
+Crypto-first system, not a fork of Qbot. It includes Binance public market data, 30-second candidate refresh, hedge-mode futures order parameters, configurable leverage checks, risk modes, paper execution, and a local panel.
 
-Live order submission remains intentionally locked in v1.
+Live order submission is disabled in this version.
 
 ## Strategy Optimization Loop
 
-The first optimization surface is intentionally simple:
+To compare strategies:
 
 - Export or collect historical snapshots with `symbol,last_price,quote_volume,price_change_percent,spread_bps,book_imbalance,funding_rate,volatility`.
 - Load them with `qcrypto_trader.backtest.load_snapshots_csv`.
