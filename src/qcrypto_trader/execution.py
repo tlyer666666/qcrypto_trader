@@ -27,6 +27,7 @@ class PaperExecutionEngine(ExecutionEngine):
             status=OrderStatus.FILLED,
             message="paper_fill",
             raw=order.to_binance_params(),
+            filled_quantity=order.quantity,
         )
         self.receipts.append(receipt)
         return receipt
@@ -36,6 +37,7 @@ class PaperExecutionEngine(ExecutionEngine):
 class LiveExecutionEngine(ExecutionEngine):
     enabled: bool = False
     credentials: BinanceCredentials | None = None
+    hedge_mode: bool = True
 
     async def submit(self, order: ApprovedOrder) -> OrderReceipt:
         if not self.enabled:
@@ -52,7 +54,7 @@ class LiveExecutionEngine(ExecutionEngine):
                 symbol=order.symbol,
                 status=OrderStatus.REJECTED,
                 message="missing_binance_credentials",
-                raw=build_order_params(order),
+                raw=build_order_params(order, hedge_mode=self.hedge_mode),
             )
         return OrderReceipt(
             client_order_id=order.client_order_id,
@@ -61,6 +63,6 @@ class LiveExecutionEngine(ExecutionEngine):
             message="live_execution_requires_explicit_adapter",
             raw={
                 "endpoint": order_endpoint(order),
-                "params": build_order_params(order),
+                "params": build_order_params(order, hedge_mode=self.hedge_mode),
             },
         )

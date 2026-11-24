@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import hmac
+import json
+import os
+import secrets
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .binance import build_futures_leverage_params, parse_symbol_rules
 from .config import TradingConfig, load_binance_credentials, load_config
@@ -61,19 +66,27 @@ INDEX_HTML = """
     </section>
   </main>
   <script>
+    const API_TOKEN = __API_TOKEN__;
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + API_TOKEN };
+    }
     async function post(url) {
-      await fetch(url, { method: 'POST' });
+      await fetch(url, { method: 'POST', headers: authHeaders() });
       await refresh();
     }
     async function setLeverage() {
       const symbol = document.getElementById('levSymbol').value;
       const value = document.getElementById('levValue').value;
-      const res = await fetch(`/api/leverage/${encodeURIComponent(symbol)}/${encodeURIComponent(value)}`, { method: 'POST' });
+      const res = await fetch(
+        `/api/leverage/${encodeURIComponent(symbol)}/${encodeURIComponent(value)}`,
+        { method: 'POST', headers: authHeaders() }
+      );
       document.getElementById('leverage').textContent = JSON.stringify(await res.json(), null, 2);
       await refresh();
     }
     async function refresh() {
-      const data = await (await fetch('/api/state')).json();
+      const res = await fetch('/api/state', { headers: authHeaders() });
+      const data = await res.json();
       document.getElementById('status').textContent = JSON.stringify(data.status, null, 2);
       document.getElementById('risk').textContent = JSON.stringify(data.risk, null, 2);
       document.getElementById('leverage').textContent = JSON.stringify(data.leverage, null, 2);
@@ -87,6 +100,45 @@ INDEX_HTML = """
 """
 
 
+def resolve_api_token(explicit_token: str | None = None) -> str:
+    if explicit_token and explicit_token.strip():
+        return explicit_token.strip()
+    env_token = os.getenv("QCRYPTO_API_TOKEN", "").strip()
+    if env_token:
+        return env_token
+    return secrets.token_urlsafe(32)
+
+
+def render_index_html(api_token: str) -> str:
+    return INDEX_HTML.replace("__API_TOKEN__", json.dumps(api_token))
+
+
+def verify_bearer_token(auth_header: str | None, expected_token: str) -> bool:
+    if not auth_header or not expected_token:
+        return False
+    scheme, _, token = auth_header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return False
+    return hmac.compare_digest(token.strip(), expected_token)
+
+
+def verify_csrf_headers(
+    origin: str | None,
+    referer: str | None,
+    host: str | None,
+) -> bool:
+    if not host or not host.strip():
+        return False
+    normalized_host = host.strip().lower()
+    if origin:
+        parsed = urlparse(origin)
+        return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == normalized_host
+    if referer:
+        parsed = urlparse(referer)
+        return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == normalized_host
+    return True
+
+
 def create_engine(config: TradingConfig | None = None) -> TradingEngine:
     engine = TradingEngine(config or load_config())
     engine.set_symbol_rules(
@@ -98,7 +150,7 @@ def create_engine(config: TradingConfig | None = None) -> TradingEngine:
                         "status": "TRADING",
                         "filters": [
                             {"filterType": "LOT_SIZE", "minQty": "0.001", "stepSize": "0.001"},
-                            {"filterType": "MIN_NOTIONAL", "minNotional": "5"},
+                            {"filterType": "MIN_NOTIONAL", "notional": "5"},
                             {"filterType": "PRICE_FILTER", "tickSize": "0.01"},
                         ],
                     }
@@ -110,9 +162,12 @@ def create_engine(config: TradingConfig | None = None) -> TradingEngine:
     return engine
 
 
-def create_app(config_path: str | Path | None = None):
+def create_app(
+    config_path: str | Path | None = None,
+    api_token: str | None = None,
+):
     try:
-        from fastapi import FastAPI
+        from fastapi import Depends, FastAPI, HTTPException, Request
         from fastapi.responses import HTMLResponse
     except ModuleNotFoundError as exc:
         raise RuntimeError(
@@ -122,55 +177,52 @@ def create_app(config_path: str | Path | None = None):
     config = load_config(config_path)
     credentials = load_binance_credentials()
     engine = create_engine(config)
+    token = resolve_api_token(api_token)
     app = FastAPI(title="QCrypto Trader", version="0.1.0")
+    app.state.api_token = token
+    app.state.engine = engine
+
+    def require_auth(request: Request) -> None:
+        if not verify_bearer_token(request.headers.get("authorization"), token):
+            raise HTTPException(status_code=401, detail="unauthorized")
+
+    def require_post_guard(request: Request) -> None:
+        require_auth(request)
+        if not verify_csrf_headers(
+            request.headers.get("origin"),
+            request.headers.get("referer"),
+            request.headers.get("host"),
+        ):
+            raise HTTPException(status_code=403, detail="csrf_origin_mismatch")
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        return INDEX_HTML
+        return render_index_html(token)
 
-    @app.get("/api/state")
+    @app.get("/api/state", dependencies=[Depends(require_auth)])
     async def state():
-        return {
-            "status": {
-                "running": engine.state.running,
-                "mode": engine.state.mode,
-                "credentials_loaded": credentials.available,
-                "last_rejection": engine.state.last_rejection,
-                "last_receipt": engine.state.last_receipt,
-                "last_candidate_refresh": engine.state.last_candidate_refresh,
-                "last_market_error": engine.state.last_market_error,
-            },
-            "risk": {
-                "paper_trading": config.app.paper_trading,
-                "allow_live_trading": config.app.allow_live_trading,
-                "hedge_mode": config.futures.hedge_mode,
-                "risk_mode": config.risk.risk_mode,
-                "default_leverage": config.futures.default_leverage,
-                "kill_switch": config.risk.kill_switch,
-            },
-            "leverage": dict(sorted(config.leverage.items())),
-            "candidates": [candidate.__dict__ for candidate in engine.state.candidates],
-        }
+        return engine.snapshot_state(credentials.available)
 
-    @app.post("/api/start")
+    @app.post("/api/start", dependencies=[Depends(require_post_guard)])
     async def start():
         await engine.start()
         return {"running": engine.state.running}
 
-    @app.post("/api/stop")
+    @app.post("/api/stop", dependencies=[Depends(require_post_guard)])
     async def stop():
         await engine.stop()
         return {"running": engine.state.running}
 
-    @app.post("/api/refresh")
+    @app.post("/api/refresh", dependencies=[Depends(require_post_guard)])
     async def refresh():
         await engine.refresh_market_data()
+        snapshot = engine.snapshot_state(credentials.available)
         return {
-            "candidate_count": len(engine.state.candidates),
-            "last_market_error": engine.state.last_market_error,
+            "candidate_count": len(snapshot["candidates"]),
+            "last_market_error": snapshot["status"]["last_market_error"],
         }
 
-    @app.post("/api/leverage/{symbol}/{leverage}")
+    @app.post("/api/leverage/{symbol}/{leverage}", dependencies=[Depends(require_post_guard)])
     async def set_leverage(symbol: str, leverage: int):
         error = engine.set_leverage(symbol, leverage)
         if error:

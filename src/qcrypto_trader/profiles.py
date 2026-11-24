@@ -44,7 +44,11 @@ PROFILES: dict[str, RiskProfile] = {
 
 
 def resolve_profile(risk: RiskConfig) -> RiskProfile:
-    return PROFILES.get(risk.risk_mode, PROFILES["balanced"])
+    profile = PROFILES.get(risk.risk_mode)
+    if profile is None:
+        valid = ", ".join(sorted(PROFILES))
+        raise ValueError(f"Unknown risk_mode {risk.risk_mode!r}; expected one of: {valid}")
+    return profile
 
 
 def effective_risk_limits(risk: RiskConfig) -> RiskProfile:
@@ -61,4 +65,3 @@ def effective_risk_limits(risk: RiskConfig) -> RiskProfile:
         ),
         min_confidence_offset=profile.min_confidence_offset,
     )
-
